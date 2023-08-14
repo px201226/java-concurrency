@@ -321,3 +321,168 @@ class ConnectionPoolTest {
 16:27:03.925 [pool-1-thread-4] INFO com.example.javaconcurrency.lib.ConnectionPool -- release connection
 ```
 
+semaphore fair = true 시, 리소스에 락을 획득하려고 하는 스레드가 많을 때 할당되는 방식이다.
+```JAVA
+
+	@Test
+	void semaphore_wait_Test() throws InterruptedException {
+		final var connectionPool = new ConnectionPool(1);
+
+		final var executorService = Executors.newFixedThreadPool(5);
+
+		for (int i=0; i<10; i++){
+			executorService.execute(() -> {
+				try {
+					final var connection = connectionPool.acquireConnection();
+					log.info("connection acquired = {}", connection);
+					Thread.sleep(2000L);
+					connectionPool.releaseConnection(connection);
+				} catch (InterruptedException e) {
+					throw new RuntimeException(e);
+				}
+			});
+
+		}
+
+
+		Thread.sleep(15000L);
+
+	}
+```
+
+```Console
+21:00:09.426 [pool-1-thread-1] INFO com.example.javaconcurrency.lib.ConnectionPool -- acquire connection
+21:00:09.427 [pool-1-thread-1] INFO com.example.javaconcurrency.lib.ConnectionPoolTest -- connection acquired = pool0
+21:00:11.432 [pool-1-thread-1] INFO com.example.javaconcurrency.lib.ConnectionPool -- release connection
+21:00:11.432 [pool-1-thread-2] INFO com.example.javaconcurrency.lib.ConnectionPool -- acquire connection
+21:00:11.432 [pool-1-thread-2] INFO com.example.javaconcurrency.lib.ConnectionPoolTest -- connection acquired = pool0
+21:00:13.437 [pool-1-thread-2] INFO com.example.javaconcurrency.lib.ConnectionPool -- release connection
+21:00:13.438 [pool-1-thread-2] INFO com.example.javaconcurrency.lib.ConnectionPool -- acquire connection
+21:00:13.438 [pool-1-thread-2] INFO com.example.javaconcurrency.lib.ConnectionPoolTest -- connection acquired = pool0
+21:00:15.443 [pool-1-thread-2] INFO com.example.javaconcurrency.lib.ConnectionPool -- release connection
+21:00:15.443 [pool-1-thread-3] INFO com.example.javaconcurrency.lib.ConnectionPool -- acquire connection
+21:00:15.443 [pool-1-thread-3] INFO com.example.javaconcurrency.lib.ConnectionPoolTest -- connection acquired = pool0
+21:00:17.448 [pool-1-thread-3] INFO com.example.javaconcurrency.lib.ConnectionPool -- release connection
+21:00:17.449 [pool-1-thread-3] INFO com.example.javaconcurrency.lib.ConnectionPool -- acquire connection
+21:00:17.449 [pool-1-thread-3] INFO com.example.javaconcurrency.lib.ConnectionPoolTest -- connection acquired = pool0
+21:00:19.452 [pool-1-thread-3] INFO com.example.javaconcurrency.lib.ConnectionPool -- release connection
+21:00:19.452 [pool-1-thread-3] INFO com.example.javaconcurrency.lib.ConnectionPool -- acquire connection
+21:00:19.452 [pool-1-thread-3] INFO com.example.javaconcurrency.lib.ConnectionPoolTest -- connection acquired = pool0
+21:00:21.453 [pool-1-thread-3] INFO com.example.javaconcurrency.lib.ConnectionPool -- release connection
+21:00:21.453 [pool-1-thread-4] INFO com.example.javaconcurrency.lib.ConnectionPool -- acquire connection
+21:00:21.453 [pool-1-thread-4] INFO com.example.javaconcurrency.lib.ConnectionPoolTest -- connection acquired = pool0
+21:00:23.457 [pool-1-thread-4] INFO com.example.javaconcurrency.lib.ConnectionPool -- release connection
+21:00:23.458 [pool-1-thread-5] INFO com.example.javaconcurrency.lib.ConnectionPool -- acquire connection
+21:00:23.458 [pool-1-thread-5] INFO com.example.javaconcurrency.lib.ConnectionPoolTest -- connection acquired = pool0
+```
+executorService.execute() 로 실행된 스레드 순서별로 (1~5) 락을 공정하게 획득하는 것을 확인할 수 있다.
+
+
+## Latch
+Latch 는 스레드의 실행을 제어하는 유용한 기법이다. 스레드가 태스크#1 -> 태스크#2 -> 태스크#3 순서로 진행되어야 한다면 Latch를
+쓰기에 적합한 경우다.
+
+```JAVA
+
+@Slf4j
+public class LatchExample implements Runnable {
+
+	private final CountDownLatch latch;
+
+	public LatchExample(final CountDownLatch latch) {
+		this.latch = latch;
+	}
+
+	@Override public void run() {
+		log.info("Do parallel Async Processing");
+		try {
+			Thread.sleep(1000L);
+		} catch (InterruptedException e) {
+			throw new RuntimeException(e);
+		}
+		latch.countDown();
+		try {
+			latch.await();
+		} catch (InterruptedException e) {
+			throw new RuntimeException(e);
+		}
+		log.info("Done parallel Async Processing");
+
+	}
+}
+```
+```JAVA
+	@Test
+	void latch_test() throws InterruptedException {
+		final var countDownLatch = new CountDownLatch(5);
+
+		final var pool = Executors.newFixedThreadPool(5);
+		for (int i=0; i<5; i++){
+			pool.execute(new LatchExample(countDownLatch));
+		}
+
+		log.info("await on main");
+		countDownLatch.await();
+		log.info("done on main");
+		Thread.sleep(5000L);
+	}
+```
+
+```CONSOLE
+21:15:33.891 [pool-1-thread-5] INFO com.example.javaconcurrency.lib.LatchExample -- Do parallel Async Processing
+21:15:33.891 [pool-1-thread-2] INFO com.example.javaconcurrency.lib.LatchExample -- Do parallel Async Processing
+21:15:33.891 [pool-1-thread-1] INFO com.example.javaconcurrency.lib.LatchExample -- Do parallel Async Processing
+21:15:33.891 [main] INFO com.example.javaconcurrency.lib.LatchExampleTest -- await on main
+21:15:33.891 [pool-1-thread-3] INFO com.example.javaconcurrency.lib.LatchExample -- Do parallel Async Processing
+21:15:33.891 [pool-1-thread-4] INFO com.example.javaconcurrency.lib.LatchExample -- Do parallel Async Processing
+21:15:34.898 [pool-1-thread-5] INFO com.example.javaconcurrency.lib.LatchExample -- Done parallel Async Processing
+21:15:34.899 [pool-1-thread-2] INFO com.example.javaconcurrency.lib.LatchExample -- Done parallel Async Processing
+21:15:34.898 [main] INFO com.example.javaconcurrency.lib.LatchExampleTest -- done on main
+21:15:34.898 [pool-1-thread-3] INFO com.example.javaconcurrency.lib.LatchExample -- Done parallel Async Processing
+21:15:34.899 [pool-1-thread-4] INFO com.example.javaconcurrency.lib.LatchExample -- Done parallel Async Processing
+21:15:34.898 [pool-1-thread-1] INFO com.example.javaconcurrency.lib.LatchExample -- Done parallel Async Processing
+```
+
+Latch 카운터가 처음에 5로 세팅하고 countDown()을 호출할 때마다 카운트 값은 1만큼 감소한다.
+카운트가 0이 되면 래치가 열리고 await() 함수 때문에 대기 중이던 스레드는 모두 해제되어 처리를 재개하게 된다.
+래치는 단 한번밖에 사용할 수 없다. 결과가 0이 되면 해당 래치는 두 번 다시 재사용할 수 없다.
+
+## Executor와 태스크 추상화
+저수준의 스레드 문제를 직접 다루려고 하기 보다는 java.util.concurrent 패키지에서 적절한 수준으로 추상화된 동시 프로그래밍 라이브러리를 쓰는 편이 좋다.
+Java에서는 일의 단위를 Task로 추상화하여 개발자는 실제 스레드의 수명주기를 일일히 신경 쓸 필요없이 사용할 수 있도록 하였다.
+ExecutorService는 관리되는 스레드 풀에서 태스크 실행 메커니즘을 규정한 인터페이스다.   
+Executors는 헬퍼 클래스로, 스레드 풀을 생성하는 팩터리 메서드를 제공한다.
+
+- newFixedThreadPool(int nThreads)
+크기가 고정된 스레드 풀을 지닌 ExecutorService를 생성한다. 스레드는 재사용되며 스레드가 전부 사용 중일 경우, 새 태스크는 큐에 보관한다.
+
+- newCachedThreadPool()
+필요한 만큼 스레드를 생성하되 가급적 스레드를 재사용한다. 생성된 스레드는 60초 간 유지되며, 그 이후에는 캐시에서 삭제된다. 
+소규모 비동기 태스크의 성능을 향상시킬 수 있다.
+
+- newSingleThreadExecutor()
+스레드 하나만 가지는 ExecutorService를 생성한다.
+
+- newScheduledThreadPool(int corePoolSize)
+미래에 태스크를 실행시킬 수 있도록 Callable 과 지연 시간을 전달받는 메서들이 있다.
+
+
+## 포크/조인
+자바 7부터 등장한 포크 조인 프레임워크는 멀티 프로세서 환경에서 효율적으로 작동하는 새로운 API를 제공한다.
+이 프레임워크는 ForkJoinPool 이라는 새로운 ExecutorService 구현체에 기반한다. ForkJoinPool 클래스는 다음과 같은 다음과 같은 특징을 가진다.
+- 하위 분할 태스크를 효율적으로 처리할 수 있다.
+- Work-Stealing(작업 빼앗기) 알고리즘을 구현한다.
+
+Work-Stealing 알고리즘은 어느 스레드가 자신이 할당받은 작업을 모두 마쳤는데 다른 스레드에 아직 배로그가 남아 있으면
+바쁜 스레드의 큐에서 작업을 가져와 실행할 수 있다.
+
+
+## 스트림과 병렬 스트림
+모든 컬렉션은 Collection 인터페이스에 있는 stream() 메서드를 제공해야한다.
+stream()은 스트림을 생성하는 구현체를 내어주는 메서드로 내부에서 ReferencePipeline을 생성한다.
+parallelStream()은 병렬로 데이터를 작업 후 그 결과를 재조합할 수 있다. 내부적ㅇ로 Spliterator를 써서 작업을 분할하고 
+공용 포크/조인 풀에서 연산을 수행한다.
+
+## 락-프리 기법
+락-프리 기법은 블로킹 기반의 락 메커니즘이 처리율에 악영향을 미친다는 전제하에 시작되었다. 
+스레드 락이 걸리는 상황에서는 스레드를 중단/재개시키는 과정(컨텍스트 스위칭)에 많은 시간이 소요될 수 있으므로 락-프리한 기법보다 훨씬 느릴 수 밖에 없다.

@@ -36,4 +36,29 @@ class ConnectionPoolTest {
 		Thread.sleep(15000L);
 
 	}
+
+	@Test
+	void semaphore_wait_Test() throws InterruptedException {
+		final var connectionPool = new ConnectionPool(1);
+
+		final var executorService = Executors.newFixedThreadPool(5);
+
+		for (int i=0; i<10; i++){
+			executorService.execute(() -> {
+				try {
+					final var connection = connectionPool.acquireConnection();
+					log.info("connection acquired = {}", connection);
+					Thread.sleep(2000L);
+					connectionPool.releaseConnection(connection);
+				} catch (InterruptedException e) {
+					throw new RuntimeException(e);
+				}
+			});
+
+		}
+
+
+		Thread.sleep(15000L);
+
+	}
 }
